@@ -5,8 +5,12 @@ const STORAGE_KEY_KEY = 'supabase_anon_key';
 
 export function getSupabaseConfig(): { url: string; anonKey: string; isFromEnv: boolean } {
   const metaEnv = (import.meta as any).env || {};
-  const envUrl = (metaEnv.VITE_SUPABASE_URL || metaEnv.NEXT_PUBLIC_SUPABASE_URL || '') as string;
-  const envKey = (metaEnv.VITE_SUPABASE_ANON_KEY || metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || '') as string;
+  let envUrl = ((metaEnv.VITE_SUPABASE_URL || metaEnv.NEXT_PUBLIC_SUPABASE_URL || '') as string).trim();
+  let envKey = ((metaEnv.VITE_SUPABASE_ANON_KEY || metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || '') as string).trim();
+
+  // Strip leading/trailing quotes if present
+  envUrl = envUrl.replace(/^["']|["']$/g, '');
+  envKey = envKey.replace(/^["']|["']$/g, '');
 
   if (envUrl && envKey && !envUrl.includes('your-project') && !envKey.includes('your-anon-key')) {
     return { url: envUrl, anonKey: envKey, isFromEnv: true };

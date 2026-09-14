@@ -4,6 +4,7 @@ import {
   getCurrentAdminSession,
   AuthUser,
 } from './services/portfolioService';
+import { getSupabase } from './lib/supabase';
 import { PortfolioData } from './types';
 import { defaultPortfolioData } from './data/defaultData';
 import { PublicNavbar } from './components/public/PublicNavbar';
@@ -24,11 +25,35 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState<'public' | 'admin'>('public');
   const [adminUser, setAdminUser] = useState<AuthUser | null>(null);
 
-  // Fungsi sinkronisasi rute URL (/admin atau #admin)
+  // Fungsi sinkronisasi rute URL (/admin, /login, /signin, /auth, #admin, #login, dsb)
   const checkRouteFromUrl = useCallback(() => {
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
-    if (path.startsWith('/admin') || hash === '#admin' || hash.startsWith('#/admin')) {
+    const search = window.location.search.toLowerCase();
+
+    const isAdminRoute =
+      path.startsWith('/admin') ||
+      path.startsWith('/login') ||
+      path.startsWith('/signin') ||
+      path.startsWith('/auth') ||
+      path.startsWith('/dashboard') ||
+      hash === '#admin' ||
+      hash.startsWith('#/admin') ||
+      hash === '#login' ||
+      hash.startsWith('#/login') ||
+      hash === '#signin' ||
+      hash.startsWith('#/signin') ||
+      hash === '#auth' ||
+      hash.startsWith('#/auth') ||
+      hash.includes('access_token=') ||
+      hash.includes('error_description=') ||
+      hash.includes('type=recovery') ||
+      hash.includes('type=signup') ||
+      search.includes('admin') ||
+      search.includes('login') ||
+      search.includes('code=');
+
+    if (isAdminRoute) {
       setCurrentRoute('admin');
     } else {
       setCurrentRoute('public');
@@ -64,6 +89,24 @@ export default function App() {
     window.addEventListener('popstate', checkRouteFromUrl);
     window.addEventListener('hashchange', checkRouteFromUrl);
 
+    // Listener otomatis dari Supabase Auth (misal saat diarahkan dari email konfirmasi/magic link)
+    const supabase = getSupabase();
+    let authUnsubscribe: (() => void) | null = null;
+    if (supabase) {
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session?.user) {
+          setAdminUser({
+            email: session.user.email || '',
+            id: session.user.id,
+            source: 'supabase',
+          });
+        } else if (event === 'SIGNED_OUT') {
+          setAdminUser(null);
+        }
+      });
+      authUnsubscribe = () => authListener.subscription.unsubscribe();
+    }
+
     // Keyboard shortcut tersembunyi (Ctrl + Alt + A) untuk akses admin langsung saat di iframe
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'a' || e.key === 'A')) {
@@ -77,6 +120,7 @@ export default function App() {
       window.removeEventListener('popstate', checkRouteFromUrl);
       window.removeEventListener('hashchange', checkRouteFromUrl);
       window.removeEventListener('keydown', handleKeyDown);
+      if (authUnsubscribe) authUnsubscribe();
     };
   }, [checkRouteFromUrl, loadInitialData]);
 
@@ -98,12 +142,20 @@ export default function App() {
   }, [data.profile]);
 
   const navigateToAdmin = () => {
-    window.history.pushState({}, '', '/admin');
+    try {
+      window.history.pushState({}, '', '/admin');
+    } catch {
+      window.location.hash = 'admin';
+    }
     setCurrentRoute('admin');
   };
 
   const navigateToPublic = () => {
-    window.history.pushState({}, '', '/');
+    try {
+      window.history.pushState({}, '', '/');
+    } catch {
+      window.location.hash = '';
+    }
     setCurrentRoute('public');
   };
 
@@ -152,7 +204,6 @@ export default function App() {
   }
 
   // ================= PUBLIC ROUTE =================
-  // (Sesuai PRD 3.8: Tidak ada link atau tombol ke halaman admin di halaman publik)
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col selection:bg-blue-100 selection:text-blue-900">
       {/* Navbar Publik */}
@@ -188,8 +239,11 @@ export default function App() {
         <ContactSection contacts={data.contacts} />
       </main>
 
-      {/* Footer Publik (Tanpa link admin) */}
-      <PublicFooter nama={data.profile.nama} />
+      {/* Footer Publik dengan tombol login tersembunyi/halus */}
+      <PublicFooter
+        nama={data.profile.nama}
+        onNavigateToAdmin={navigateToAdmin}
+      />
     </div>
   );
 }
